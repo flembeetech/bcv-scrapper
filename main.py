@@ -27,6 +27,7 @@ def should_scrape(today: str, rec: dict | None) -> bool:
 
 @app.route("/")
 def mostrar_tasa():
+    date = datetime.now(CARACAS_TZ)
     today = datetime.now(CARACAS_TZ).date().isoformat()
     rec = get_rate()
 
@@ -35,7 +36,7 @@ def mostrar_tasa():
             "tasa_bcv": rec["tasa"],
             "fecha_valor": rec["fecha_valor"],
             "source": "db:no_scrape_needed",
-            "hora_caracas": today,
+            "hora_caracas": date,
         }), 200
 
     try:
@@ -49,7 +50,7 @@ def mostrar_tasa():
                 "fecha_valor": rec["fecha_valor"],
                 "source": "db:scrape_error",
                 "error": str(e),
-                "hora_caracas": today,
+                "hora_caracas": date,
             }), 200
         return jsonify({"error": f"No BCV y sin datos en DB: {e}"}), 503
 
@@ -59,7 +60,7 @@ def mostrar_tasa():
                 "tasa_bcv": rec["tasa"],
                 "fecha_valor": rec["fecha_valor"],
                 "source": "db:parse_error",
-                "hora_caracas": today,
+                "hora_caracas": date,
             }), 200
         return jsonify({"error": "No se pudo obtener tasa/fecha"}), 503
 
@@ -69,7 +70,7 @@ def mostrar_tasa():
         "tasa_bcv": new_rec["tasa"],
         "fecha_valor": new_rec["fecha_valor"],
         "source": new_rec["source"],
-        "hora_caracas": today,
+        "hora_caracas": date,
     }), 200
 
 @app.route("/latest")
