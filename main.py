@@ -1,11 +1,12 @@
 from flask import Flask, jsonify
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo 
 
 from services.db_service import init_db, get_rate, upsert_rate
 from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa
 
 app = Flask(__name__)
-CARACAS_TZ = timezone(timedelta(hours=-4))
+CARACAS_TZ = ZoneInfo("America/Caracas")
 
 init_db()
 
