@@ -35,6 +35,7 @@ def mostrar_tasa():
             "tasa_bcv": rec["tasa"],
             "fecha_valor": rec["fecha_valor"],
             "source": "db:no_scrape_needed",
+            "hora_caracas": today,
         }), 200
 
     try:
@@ -48,6 +49,7 @@ def mostrar_tasa():
                 "fecha_valor": rec["fecha_valor"],
                 "source": "db:scrape_error",
                 "error": str(e),
+                "hora_caracas": today,
             }), 200
         return jsonify({"error": f"No BCV y sin datos en DB: {e}"}), 503
 
@@ -57,6 +59,7 @@ def mostrar_tasa():
                 "tasa_bcv": rec["tasa"],
                 "fecha_valor": rec["fecha_valor"],
                 "source": "db:parse_error",
+                "hora_caracas": today,
             }), 200
         return jsonify({"error": "No se pudo obtener tasa/fecha"}), 503
 
@@ -66,6 +69,7 @@ def mostrar_tasa():
         "tasa_bcv": new_rec["tasa"],
         "fecha_valor": new_rec["fecha_valor"],
         "source": new_rec["source"],
+        "hora_caracas": today,
     }), 200
 
 @app.route("/latest")
