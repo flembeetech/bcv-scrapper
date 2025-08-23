@@ -27,7 +27,7 @@ def should_scrape(today: str, rec: dict | None) -> bool:
 
 @app.route("/")
 def mostrar_tasa():
-    date = datetime.now(CARACAS_TZ)
+    date = datetime.now(CARACAS_TZ).date()
     today = datetime.now(CARACAS_TZ).date().isoformat()
     rec = get_rate()
 
