@@ -1,6 +1,6 @@
 from flask import Flask, jsonify
-from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo 
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from services.db_service import init_db, get_rate, upsert_rate
 from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa
@@ -20,16 +20,22 @@ def should_scrape(today: str, rec: dict | None) -> bool:
     fv = rec.get("fecha_valor") or "1970-01-01"
     scraped_today = _date_of(rec.get("last_scraped_at")) == today
 
-    if today < fv:
+    # Parseamos para comparar como fechas
+    today_date = datetime.strptime(today, "%Y-%m-%d").date()
+    fv_date = datetime.strptime(fv, "%Y-%m-%d").date()
+
+    # Si ya scrapeamos hoy y la fecha_valor es >= today, no scrapeamos de nuevo
+    if fv_date >= today_date and scraped_today:
         return False
-    if today == fv:
-        return not scraped_today
+
+    # Si la tasa guardada tiene fecha_valor menor a today o no se ha scrapeado hoy → scrapea
     return True
 
 @app.route("/")
 def mostrar_tasa():
     fecha_hora_caracas = datetime.now(CARACAS_TZ)
     today = fecha_hora_caracas.strftime('%Y-%m-%d')
+    today_date = datetime.strptime(today, "%Y-%m-%d").date()
     rec = get_rate()
 
     if not should_scrape(today, rec):
@@ -44,6 +50,32 @@ def mostrar_tasa():
         soup = fetch_bcv()
         fecha_valor = parse_fecha_valor(soup)
         tasa = parse_tasa(soup)
+
+        if fecha_valor is None or tasa is None:
+            raise ValueError("No se pudo obtener tasa o fecha_valor")
+
+        fecha_valor_date = datetime.strptime(fecha_valor, "%Y-%m-%d").date()
+
+        # Si la fecha valor es futura, no se guarda aún
+        if fecha_valor_date > today_date:
+            return jsonify({
+                "tasa_bcv": rec["tasa"] if rec else None,
+                "fecha_valor": rec["fecha_valor"] if rec else None,
+                "source": "db:future_fecha_valor_skipped",
+                "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
+            }), 200
+
+        # Guardar la nueva tasa
+        upsert_rate(tasa, fecha_valor, source="live", mark_scraped=True)
+        new_rec = get_rate()
+
+        return jsonify({
+            "tasa_bcv": new_rec["tasa"],
+            "fecha_valor": new_rec["fecha_valor"],
+            "source": new_rec["source"],
+            "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
+        }), 200
+
     except Exception as e:
         if rec:
             return jsonify({
@@ -55,25 +87,6 @@ def mostrar_tasa():
             }), 200
         return jsonify({"error": f"No BCV y sin datos en DB: {e}"}), 503
 
-    if (fecha_valor is None) or (tasa is None):
-        if rec:
-            return jsonify({
-                "tasa_bcv": rec["tasa"],
-                "fecha_valor": rec["fecha_valor"],
-                "source": "db:parse_error",
-                "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
-            }), 200
-        return jsonify({"error": "No se pudo obtener tasa/fecha"}), 503
-
-    upsert_rate(tasa, fecha_valor, source="live", mark_scraped=True)
-    new_rec = get_rate()
-    return jsonify({
-        "tasa_bcv": new_rec["tasa"],
-        "fecha_valor": new_rec["fecha_valor"],
-        "source": new_rec["source"],
-        "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
-    }), 200
-
 @app.route("/latest")
 def ultima_tasa_guardada():
     rec = get_rate()
@@ -82,4 +95,4 @@ def ultima_tasa_guardada():
     return jsonify(rec), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5100)
