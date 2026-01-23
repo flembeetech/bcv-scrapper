@@ -17,6 +17,10 @@ def should_scrape(today: str, rec: dict | None) -> bool:
     if not rec:
         return True
 
+    # Si falta la tasa euro (por migración o error previo), forzamos scrape
+    if not rec.get("tasa_eur"):
+        return True
+
     fv = rec.get("fecha_valor") or "1970-01-01"
     scraped_today = _date_of(rec.get("last_scraped_at")) == today
 
