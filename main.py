@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from services.db_service import init_db, get_rate, upsert_rate
-from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa
+from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa, parse_tasa_eur
 
 app = Flask(__name__)
 CARACAS_TZ = ZoneInfo('America/Caracas')
@@ -41,6 +41,7 @@ def mostrar_tasa():
     if not should_scrape(today, rec):
         return jsonify({
             "tasa_bcv": rec["tasa"],
+            "tasa_eur_bcv": rec.get("tasa_eur"),
             "fecha_valor": rec["fecha_valor"],
             "source": "db:no_scrape_needed",
             "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
@@ -50,9 +51,17 @@ def mostrar_tasa():
         soup = fetch_bcv()
         fecha_valor = parse_fecha_valor(soup)
         tasa = parse_tasa(soup)
+        tasa_eur = parse_tasa_eur(soup)
 
         if fecha_valor is None or tasa is None:
             raise ValueError("No se pudo obtener tasa o fecha_valor")
+        
+        if tasa_eur is None:
+             # Si falla euro, podríamos lanzar error o dejarlo None/0. 
+             # Asumiremos que es crítico y lanzamos error para consistencia, 
+             # o defaulting a 0 si se prefiere resiliencia parcial. 
+             # El requerimiento implica que "tambien necesito almacenar la tasa euro", así que mejor fallar si no está.
+             raise ValueError("No se pudo obtener la tasa euro")
 
         fecha_valor_date = datetime.strptime(fecha_valor, "%Y-%m-%d").date()
 
@@ -60,17 +69,19 @@ def mostrar_tasa():
         if fecha_valor_date > today_date:
             return jsonify({
                 "tasa_bcv": rec["tasa"] if rec else None,
+                "tasa_eur_bcv": rec.get("tasa_eur") if rec else None,
                 "fecha_valor": rec["fecha_valor"] if rec else None,
                 "source": "db:future_fecha_valor_skipped",
                 "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
             }), 200
 
         # Guardar la nueva tasa
-        upsert_rate(tasa, fecha_valor, source="live", mark_scraped=True)
+        upsert_rate(tasa, fecha_valor, source="live", mark_scraped=True, tasa_eur=tasa_eur)
         new_rec = get_rate()
 
         return jsonify({
             "tasa_bcv": new_rec["tasa"],
+            "tasa_eur_bcv": new_rec.get("tasa_eur"),
             "fecha_valor": new_rec["fecha_valor"],
             "source": new_rec["source"],
             "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
@@ -80,6 +91,7 @@ def mostrar_tasa():
         if rec:
             return jsonify({
                 "tasa_bcv": rec["tasa"],
+                "tasa_eur_bcv": rec.get("tasa_eur"),
                 "fecha_valor": rec["fecha_valor"],
                 "source": "db:scrape_error",
                 "error": str(e),

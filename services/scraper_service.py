@@ -27,3 +27,15 @@ def parse_tasa(soup: BeautifulSoup) -> Optional[float]:
         return float(strong_tag.text.strip().replace(',', '.'))
     except ValueError:
         return None
+
+def parse_tasa_eur(soup: BeautifulSoup) -> Optional[float]:
+    euro_div = soup.find('div', id='euro')
+    if not euro_div:
+        return None
+    strong_tag = euro_div.find('strong')
+    if not strong_tag:
+        return None
+    try:
+        return float(strong_tag.text.strip().replace(',', '.'))
+    except ValueError:
+        return None

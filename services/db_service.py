@@ -31,12 +31,16 @@ def init_db() -> None:
             conn.execute("ALTER TABLE rates ADD COLUMN source TEXT")
         except Exception:
             pass
+        try:
+            conn.execute("ALTER TABLE rates ADD COLUMN tasa_eur REAL")
+        except Exception:
+            pass
 
         exists = conn.execute("SELECT COUNT(*) FROM rates").fetchone()[0]
         if exists == 0:
             conn.execute("""
-                INSERT INTO rates (id, tasa, fecha_valor, source)
-                VALUES (1, 0.0, '1970-01-01', 'init')
+                INSERT INTO rates (id, tasa, fecha_valor, source, tasa_eur)
+                VALUES (1, 0.0, '1970-01-01', 'init', 0.0)
             """)
 
 def get_rate() -> Optional[Dict]:
@@ -44,26 +48,28 @@ def get_rate() -> Optional[Dict]:
         row = conn.execute("SELECT * FROM rates WHERE id = 1").fetchone()
         return dict(row) if row else None
 
-def upsert_rate(tasa: float, fecha_valor: str, source: str = "live", mark_scraped: bool = True) -> None:
+def upsert_rate(tasa: float, fecha_valor: str, source: str = "live", mark_scraped: bool = True, tasa_eur: float = 0.0) -> None:
     with _connect() as conn:
         if mark_scraped:
             conn.execute("""
-                INSERT INTO rates (id, tasa, fecha_valor, source, updated_at, last_scraped_at)
-                VALUES (1, ?, ?, ?, datetime('now'), datetime('now'))
+                INSERT INTO rates (id, tasa, fecha_valor, source, updated_at, last_scraped_at, tasa_eur)
+                VALUES (1, ?, ?, ?, datetime('now'), datetime('now'), ?)
                 ON CONFLICT(id) DO UPDATE SET
                     tasa = excluded.tasa,
                     fecha_valor = excluded.fecha_valor,
                     source = excluded.source,
                     updated_at = datetime('now'),
-                    last_scraped_at = datetime('now')
-            """, (tasa, fecha_valor, source))
+                    last_scraped_at = datetime('now'),
+                    tasa_eur = excluded.tasa_eur
+            """, (tasa, fecha_valor, source, tasa_eur))
         else:
             conn.execute("""
-                INSERT INTO rates (id, tasa, fecha_valor, source, updated_at)
-                VALUES (1, ?, ?, ?, datetime('now'))
+                INSERT INTO rates (id, tasa, fecha_valor, source, updated_at, tasa_eur)
+                VALUES (1, ?, ?, ?, datetime('now'), ?)
                 ON CONFLICT(id) DO UPDATE SET
                     tasa = excluded.tasa,
                     fecha_valor = excluded.fecha_valor,
                     source = excluded.source,
-                    updated_at = datetime('now')
-            """, (tasa, fecha_valor, source))
+                    updated_at = datetime('now'),
+                    tasa_eur = excluded.tasa_eur
+            """, (tasa, fecha_valor, source, tasa_eur))
