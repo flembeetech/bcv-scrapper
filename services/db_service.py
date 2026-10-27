@@ -47,8 +47,8 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS rates_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fecha_valor TEXT NOT NULL UNIQUE,   -- YYYY-MM-DD (Fecha Oficial)
-                tasa REAL NOT NULL,                 -- Dólar BCV
-                tasa_eur REAL,                      -- Euro BCV
+                tasa_bcv REAL NOT NULL,             -- Dólar BCV
+                tasa_eur_bcv REAL NOT NULL,         -- Euro BCV
                 source TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -56,10 +56,20 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_rates_history_fecha_valor ON rates_history (fecha_valor);")
 
+        # Migración automática si existen las columnas anteriores tasa / tasa_eur
+        try:
+            columns = [c[1] for c in conn.execute("PRAGMA table_info(rates_history)").fetchall()]
+            if "tasa" in columns and "tasa_bcv" not in columns:
+                conn.execute("ALTER TABLE rates_history RENAME COLUMN tasa TO tasa_bcv")
+            if "tasa_eur" in columns and "tasa_eur_bcv" not in columns:
+                conn.execute("ALTER TABLE rates_history RENAME COLUMN tasa_eur TO tasa_eur_bcv")
+        except Exception:
+            pass
+
         # Migrar registro previo existente en rates hacia el histórico si aplica
         try:
             conn.execute("""
-                INSERT OR IGNORE INTO rates_history (fecha_valor, tasa, tasa_eur, source, created_at, updated_at)
+                INSERT OR IGNORE INTO rates_history (fecha_valor, tasa_bcv, tasa_eur_bcv, source, created_at, updated_at)
                 SELECT fecha_valor, tasa, COALESCE(tasa_eur, 0.0), source, updated_at, updated_at
                 FROM rates
                 WHERE fecha_valor IS NOT NULL AND fecha_valor != '1970-01-01' AND tasa > 0
@@ -121,11 +131,11 @@ def _import_csv_data(conn, csv_path: str) -> int:
     rows.sort(key=lambda x: x[0])
     for fv, usd, eur in rows:
         conn.execute("""
-            INSERT INTO rates_history (fecha_valor, tasa, tasa_eur, source, created_at, updated_at)
+            INSERT INTO rates_history (fecha_valor, tasa_bcv, tasa_eur_bcv, source, created_at, updated_at)
             VALUES (?, ?, ?, 'historical:excel', datetime('now'), datetime('now'))
             ON CONFLICT(fecha_valor) DO UPDATE SET
-                tasa = excluded.tasa,
-                tasa_eur = excluded.tasa_eur,
+                tasa_bcv = excluded.tasa_bcv,
+                tasa_eur_bcv = excluded.tasa_eur_bcv,
                 source = excluded.source,
                 updated_at = datetime('now')
         """, (fv, usd, eur))
@@ -162,19 +172,21 @@ def get_rate() -> Optional[Dict]:
         row = conn.execute("SELECT * FROM rates WHERE id = 1").fetchone()
         return dict(row) if row else None
 
-def save_rate_history(tasa: float, fecha_valor: str, source: str = "live", tasa_eur: float = 0.0) -> None:
+def save_rate_history(tasa: float, fecha_valor: str, source: str = "live", tasa_eur: float = 0.0, **kwargs) -> None:
     if not fecha_valor or fecha_valor == "1970-01-01" or tasa <= 0:
         return
+    eur = kwargs.get("tasa_eur_bcv", tasa_eur)
+    usd = kwargs.get("tasa_bcv", tasa)
     with _connect() as conn:
         conn.execute("""
-            INSERT INTO rates_history (fecha_valor, tasa, tasa_eur, source, created_at, updated_at)
+            INSERT INTO rates_history (fecha_valor, tasa_bcv, tasa_eur_bcv, source, created_at, updated_at)
             VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
             ON CONFLICT(fecha_valor) DO UPDATE SET
-                tasa = excluded.tasa,
-                tasa_eur = excluded.tasa_eur,
+                tasa_bcv = excluded.tasa_bcv,
+                tasa_eur_bcv = excluded.tasa_eur_bcv,
                 source = excluded.source,
                 updated_at = datetime('now')
-        """, (fecha_valor, tasa, tasa_eur, source))
+        """, (fecha_valor, usd, eur, source))
 
 def upsert_rate(tasa: float, fecha_valor: str, source: str = "live", mark_scraped: bool = True, tasa_eur: float = 0.0) -> None:
     with _connect() as conn:
@@ -205,11 +217,11 @@ def upsert_rate(tasa: float, fecha_valor: str, source: str = "live", mark_scrape
         # Registrar en la tabla de histórico diario
         if fecha_valor and fecha_valor != "1970-01-01" and tasa > 0:
             conn.execute("""
-                INSERT INTO rates_history (fecha_valor, tasa, tasa_eur, source, created_at, updated_at)
+                INSERT INTO rates_history (fecha_valor, tasa_bcv, tasa_eur_bcv, source, created_at, updated_at)
                 VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
                 ON CONFLICT(fecha_valor) DO UPDATE SET
-                    tasa = excluded.tasa,
-                    tasa_eur = excluded.tasa_eur,
+                    tasa_bcv = excluded.tasa_bcv,
+                    tasa_eur_bcv = excluded.tasa_eur_bcv,
                     source = excluded.source,
                     updated_at = datetime('now')
             """, (fecha_valor, tasa, tasa_eur, source))
@@ -223,20 +235,9 @@ def get_rates_history(limit: Optional[int] = None, order: str = "DESC") -> List[
         params.append(limit)
     with _connect() as conn:
         rows = conn.execute(query, params).fetchall()
-        result = []
-        for r in rows:
-            d = dict(r)
-            d["tasa_bcv"] = d["tasa"]
-            d["tasa_eur_bcv"] = d.get("tasa_eur")
-            result.append(d)
-        return result
+        return [dict(r) for r in rows]
 
 def get_rate_by_date(fecha_valor: str) -> Optional[Dict]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM rates_history WHERE fecha_valor = ?", (fecha_valor,)).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        d["tasa_bcv"] = d["tasa"]
-        d["tasa_eur_bcv"] = d.get("tasa_eur")
-        return d
+        return dict(row) if row else None

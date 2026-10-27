@@ -77,7 +77,7 @@ def mostrar_tasa():
         fecha_valor_date = datetime.strptime(fecha_valor, "%Y-%m-%d").date()
 
         # Guardar en histórico diario (incluso si fecha_valor es futura para la tasa activa)
-        save_rate_history(tasa, fecha_valor, source="live", tasa_eur=tasa_eur)
+        save_rate_history(tasa, fecha_valor, source="live", tasa_eur_bcv=tasa_eur)
 
         # Si la fecha valor es futura, no se guarda aún como tasa activa
         if fecha_valor_date > today_date:

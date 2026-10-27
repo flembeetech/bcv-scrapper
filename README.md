@@ -102,9 +102,7 @@ Devuelve la lista de tasas históricas guardadas diariamente, ordenadas de la m�
     {
       "id": 2,
       "fecha_valor": "2026-01-23",
-      "tasa": 352.7063,
       "tasa_bcv": 352.7063,
-      "tasa_eur": 413.389,
       "tasa_eur_bcv": 413.389,
       "source": "live",
       "created_at": "2026-01-23 13:45:00",
@@ -113,9 +111,7 @@ Devuelve la lista de tasas históricas guardadas diariamente, ordenadas de la m�
     {
       "id": 1,
       "fecha_valor": "2026-01-22",
-      "tasa": 350.1500,
       "tasa_bcv": 350.1500,
-      "tasa_eur": 410.200,
       "tasa_eur_bcv": 410.200,
       "source": "live",
       "created_at": "2026-01-22 14:00:00",
@@ -135,9 +131,7 @@ Devuelve la tasa histórica oficial para la fecha especificada en formato `YYYY-
 {
   "id": 2,
   "fecha_valor": "2026-01-23",
-  "tasa": 352.7063,
   "tasa_bcv": 352.7063,
-  "tasa_eur": 413.389,
   "tasa_eur_bcv": 413.389,
   "source": "live",
   "created_at": "2026-01-23 13:45:00",
@@ -166,7 +160,7 @@ Si no existe registro para esa fecha, retorna un código HTTP `404`:
 
 Se utiliza un archivo SQLite `bcv_rates.sqlite3` con dos tablas:
 1. `rates`: Mantiene un único registro (`id=1`) actualizado con la última información válida para respuesta en tiempo real y caché de scrape.
-2. `rates_history`: Almacena el histórico diario de tasas oficiales (`fecha_valor` única, `tasa` USD, `tasa_eur` EUR, `source`, `created_at`, `updated_at`). Al hacer scraping cada día, se crea o actualiza automáticamente el registro del día.
+2. `rates_history`: Almacena el histórico diario de tasas oficiales (`fecha_valor` única, `tasa_bcv` USD, `tasa_eur_bcv` EUR, `source`, `created_at`, `updated_at`). Al hacer scraping cada día, se crea o actualiza automáticamente el registro del día.
 
 ### Importación de Datos Históricos
 El dataset inicial en `data/historical_rates.csv` se auto-importa al iniciar la aplicación en una base de datos nueva. También puedes ejecutar la importación manualmente en cualquier momento:
