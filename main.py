@@ -1,8 +1,15 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from services.db_service import init_db, get_rate, upsert_rate
+from services.db_service import (
+    init_db,
+    get_rate,
+    upsert_rate,
+    save_rate_history,
+    get_rates_history,
+    get_rate_by_date,
+)
 from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa, parse_tasa_eur
 
 app = Flask(__name__)
@@ -69,7 +76,10 @@ def mostrar_tasa():
 
         fecha_valor_date = datetime.strptime(fecha_valor, "%Y-%m-%d").date()
 
-        # Si la fecha valor es futura, no se guarda aún
+        # Guardar en histórico diario (incluso si fecha_valor es futura para la tasa activa)
+        save_rate_history(tasa, fecha_valor, source="live", tasa_eur=tasa_eur)
+
+        # Si la fecha valor es futura, no se guarda aún como tasa activa
         if fecha_valor_date > today_date:
             return jsonify({
                 "tasa_bcv": rec["tasa"] if rec else None,
@@ -110,5 +120,23 @@ def ultima_tasa_guardada():
         return jsonify({"error": "No hay datos almacenados"}), 404
     return jsonify(rec), 200
 
+@app.route("/history")
+def historico_tasas():
+    limit = request.args.get("limit", default=None, type=int)
+    order = request.args.get("order", default="DESC", type=str)
+    records = get_rates_history(limit=limit, order=order)
+    return jsonify({
+        "total": len(records),
+        "rates": records
+    }), 200
+
+@app.route("/history/<string:fecha>")
+def tasa_por_fecha(fecha: str):
+    rec = get_rate_by_date(fecha)
+    if not rec:
+        return jsonify({"error": f"No se encontró tasa para la fecha {fecha}"}), 404
+    return jsonify(rec), 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
