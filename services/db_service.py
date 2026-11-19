@@ -5,7 +5,9 @@ from datetime import datetime
 from typing import Optional, Dict, List
 
 def _get_db_path() -> str:
-    return os.environ.get("BCV_DB_PATH", "bcv_rates.sqlite3")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_path = os.path.join(base_dir, "bcv_rates.sqlite3")
+    return os.environ.get("BCV_DB_PATH", default_path)
 
 def _connect():
     conn = sqlite3.connect(_get_db_path())
@@ -225,6 +227,28 @@ def upsert_rate(tasa: float, fecha_valor: str, source: str = "live", mark_scrape
                     source = excluded.source,
                     updated_at = datetime('now')
             """, (fecha_valor, tasa, tasa_eur, source))
+
+def mark_last_scraped() -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE rates SET last_scraped_at = datetime('now') WHERE id = 1")
+
+def sync_active_rate_from_history(today: str) -> None:
+    with _connect() as conn:
+        current = conn.execute("SELECT fecha_valor FROM rates WHERE id = 1").fetchone()
+        current_fv = current["fecha_valor"] if current else "1970-01-01"
+        if current_fv < today:
+            row = conn.execute("""
+                SELECT * FROM rates_history 
+                WHERE fecha_valor <= ? AND fecha_valor > ?
+                ORDER BY fecha_valor DESC 
+                LIMIT 1
+            """, (today, current_fv)).fetchone()
+            if row:
+                conn.execute("""
+                    UPDATE rates 
+                    SET tasa = ?, fecha_valor = ?, tasa_eur = ?, source = ?, updated_at = datetime('now')
+                    WHERE id = 1
+                """, (row["tasa_bcv"], row["fecha_valor"], row["tasa_eur_bcv"], row["source"]))
 
 def get_rates_history(limit: Optional[int] = None, order: str = "DESC") -> List[Dict]:
     order_direction = "ASC" if str(order).upper() == "ASC" else "DESC"

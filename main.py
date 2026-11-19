@@ -9,6 +9,8 @@ from services.db_service import (
     save_rate_history,
     get_rates_history,
     get_rate_by_date,
+    mark_last_scraped,
+    sync_active_rate_from_history,
 )
 from services.scraper_service import fetch_bcv, parse_fecha_valor, parse_tasa, parse_tasa_eur
 
@@ -47,6 +49,9 @@ def mostrar_tasa():
     fecha_hora_caracas = datetime.now(CARACAS_TZ)
     today = fecha_hora_caracas.strftime('%Y-%m-%d')
     today_date = datetime.strptime(today, "%Y-%m-%d").date()
+
+    # Sincronizar tasa activa con el histórico si ya existe una tasa más reciente <= hoy
+    sync_active_rate_from_history(today)
     rec = get_rate()
 
     if not should_scrape(today, rec):
@@ -66,21 +71,19 @@ def mostrar_tasa():
 
         if fecha_valor is None or tasa is None:
             raise ValueError("No se pudo obtener tasa o fecha_valor")
-        
+
         if tasa_eur is None:
-             # Si falla euro, podríamos lanzar error o dejarlo None/0. 
-             # Asumiremos que es crítico y lanzamos error para consistencia, 
-             # o defaulting a 0 si se prefiere resiliencia parcial. 
-             # El requerimiento implica que "tambien necesito almacenar la tasa euro", así que mejor fallar si no está.
-             raise ValueError("No se pudo obtener la tasa euro")
+            tasa_eur = 0.0
 
         fecha_valor_date = datetime.strptime(fecha_valor, "%Y-%m-%d").date()
 
         # Guardar en histórico diario (incluso si fecha_valor es futura para la tasa activa)
         save_rate_history(tasa, fecha_valor, source="live", tasa_eur_bcv=tasa_eur)
 
-        # Si la fecha valor es futura, no se guarda aún como tasa activa
+        # Si la fecha valor es futura, marcar escaneado de hoy y mantener la tasa activa vigente
         if fecha_valor_date > today_date:
+            mark_last_scraped()
+            rec = get_rate()
             return jsonify({
                 "tasa_bcv": rec["tasa"] if rec else None,
                 "tasa_eur_bcv": rec.get("tasa_eur") if rec else None,
@@ -89,7 +92,7 @@ def mostrar_tasa():
                 "hora_caracas": fecha_hora_caracas.strftime('%Y-%m-%d %H:%M:%S'),
             }), 200
 
-        # Guardar la nueva tasa
+        # Guardar la nueva tasa activa
         upsert_rate(tasa, fecha_valor, source="live", mark_scraped=True, tasa_eur=tasa_eur)
         new_rec = get_rate()
 
